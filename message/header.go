@@ -9,6 +9,8 @@ const (
 type Header struct {
 	Stx      *byte    `json:"stx"`
 	Len      *byte    `json:"len"`
+	IncFlags *byte    `json:"incFlags"`
+	CmpFlags *byte    `json:"cmpFlags"`
 	Seq      *byte    `json:"seq"`
 	Sysid    *byte    `json:"sysid"`
 	CompID   *byte    `json:"compid"`
@@ -24,10 +26,12 @@ func NewHeader(buffer *[HEADER_SIZE]byte) *Header {
 	}
 	header.Stx = &header.buffer[0]
 	header.Len = &header.buffer[1]
-	header.Seq = &header.buffer[2]
-	header.Sysid = &header.buffer[3]
-	header.CompID = &header.buffer[4]
-	header.MsgidArr = (*[3]byte)(unsafe.Pointer(&header.buffer[5]))
+	header.IncFlags = &header.buffer[2]
+	header.CmpFlags = &header.buffer[3]
+	header.Seq = &header.buffer[4]
+	header.Sysid = &header.buffer[5]
+	header.CompID = &header.buffer[6]
+	header.MsgidArr = (*[3]byte)(unsafe.Pointer(&header.buffer[7]))
 	return header
 }
 
@@ -37,11 +41,13 @@ func NewHeaderWith(buffer *[HEADER_SIZE]byte, stx, len, seq, sysid, compid byte,
 	}
 	header.Stx = &header.buffer[0]
 	header.Len = &header.buffer[1]
-	header.Seq = &header.buffer[2]
-	header.Sysid = &header.buffer[3]
-	header.CompID = &header.buffer[4]
-	header.MsgidArr = (*[3]byte)(unsafe.Pointer(&header.buffer[5]))
-	header.fill([HEADER_SIZE]byte{stx, len, seq, sysid, compid, byte(msgid & 0xFF), byte((msgid >> 8) & 0xFF), byte((msgid >> 16) & 0xFF), 0, 0})
+	header.IncFlags = &header.buffer[2]
+	header.CmpFlags = &header.buffer[3]
+	header.Seq = &header.buffer[4]
+	header.Sysid = &header.buffer[5]
+	header.CompID = &header.buffer[6]
+	header.MsgidArr = (*[3]byte)(unsafe.Pointer(&header.buffer[7]))
+	header.fill([HEADER_SIZE]byte{stx, len, 0, 0, seq, sysid, compid, byte(msgid & 0xFF), byte((msgid >> 8) & 0xFF), byte((msgid >> 16) & 0xFF)})
 	header.len = HEADER_SIZE
 	return header
 }
