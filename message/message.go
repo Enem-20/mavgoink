@@ -32,6 +32,7 @@ type Message struct {
 
 func NewMessage() *Message {
 	message := &Message{Header: nil, Payload: nil, crc: newCRC()}
+	message.crc.Reset()
 	message.Header = NewHeader((*[MAVLINK_NUM_HEADER_BYTES]byte)(unsafe.Pointer(&message.buffer[0])))
 	message.Payload = NewPayload((*[MAVLINK_MAX_PAYLOAD_LEN]byte)(unsafe.Pointer(&message.buffer[MAVLINK_NUM_HEADER_BYTES])), 0)
 	return message
