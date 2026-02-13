@@ -1,9 +1,10 @@
 package system
 
 import (
-	"mavgoink/component"
-	"mavgoink/message"
 	"strconv"
+
+	"github.com/Enem-20/mavgoink/component"
+	"github.com/Enem-20/mavgoink/message"
 )
 
 const (

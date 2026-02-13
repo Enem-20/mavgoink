@@ -2,7 +2,8 @@ package main
 
 import (
 	"log"
-	"mavgoink/system"
+
+	"github.com/Enem-20/mavgoink/system"
 )
 
 func main() {
