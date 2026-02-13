@@ -82,5 +82,6 @@ func (s *System) CreateDefaultMessage(compId byte, msgId uint32) *message.Messag
 }
 
 func (s *System) CreateMessage(compId byte, msgId uint32, payloadCapacity byte) *message.Message {
+	s.Seq = s.Seq%255 + 1
 	return message.NewMessageFrom(s.STX, payloadCapacity, s.Seq, s.ID, compId, msgId)
 }
