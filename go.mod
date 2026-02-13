@@ -1,4 +1,4 @@
-module mavgoink
+module github.com/Enem-20/mavgoink
 
 go 1.25.7
 
