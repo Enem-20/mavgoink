@@ -23,11 +23,12 @@ var PAYLOAD_SIZES_BY_MSG_ID = map[uint32]byte{
 }
 
 type Message struct {
-	buffer  [MAVLINK_MAX_PACKET_LEN]byte
-	Header  *Header  `json:"header"`
-	Payload *Payload `json:"payload"`
-	crc     *CRC
-	len     int
+	buffer   [MAVLINK_MAX_PACKET_LEN]byte
+	Header   *Header  `json:"header"`
+	Payload  *Payload `json:"payload"`
+	crcExtra byte
+	crc      *CRC
+	len      int
 }
 
 func NewMessage() *Message {
@@ -134,18 +135,17 @@ func (m *Message) GetRawMessage() []byte {
 func (m *Message) update(pushedSize int, pushedPosition int) bool {
 	switch {
 	case m.len == 0:
-		if pushedPosition == 0 {
-			m.crc.Reset()
-		}
+		m.crc.Reset()
 	case m.len < MAVLINK_NUM_HEADER_BYTES:
 		m.Header.len += byte(pushedSize)
 	case (m.len >= MAVLINK_NUM_HEADER_BYTES) && !m.Payload.IsFull():
 		m.Payload.Len += byte(pushedSize)
 	}
 
-	if (m.len >= MAVLINK_NUM_HEADER_BYTES) && m.Payload.IsFull() {
-		m.crc.Calculate(m.buffer[m.len : m.len+pushedSize])
-		m.len += pushedSize
+	if (m.len >= MAVLINK_NUM_HEADER_BYTES) && m.Payload.IsFull() && (pushedSize == 1) {
+		m.crc.Calculate(m.buffer[m.len : m.len+1])
+		m.len++
+		m.crc.CalculateByte(m.crcExtra)
 		binary.LittleEndian.PutUint16(m.buffer[m.len:m.len+2], m.crc.GetCRC())
 		m.len += 2
 		return true
