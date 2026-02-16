@@ -140,16 +140,15 @@ func (m *Message) update(pushedSize int, pushedPosition int) bool {
 		m.Header.len += byte(pushedSize)
 	case (m.len >= MAVLINK_NUM_HEADER_BYTES) && !m.Payload.IsFull():
 		m.Payload.Len += byte(pushedSize)
-	}
-
-	if (m.len >= MAVLINK_NUM_HEADER_BYTES) && m.Payload.IsFull() && (pushedSize == 1) {
-		m.crc.Calculate(m.buffer[m.len : m.len+1])
-		m.len++
-		m.crc.CalculateByte(m.crcExtra)
+	case (int(m.len) >= (MAVLINK_NUM_HEADER_BYTES+int(m.Header.len)) && m.Payload.IsFull()):
+		m.crc.CalculateByte(m.buffer[m.len])
 		binary.LittleEndian.PutUint16(m.buffer[m.len:m.len+2], m.crc.GetCRC())
 		m.len += 2
 		return true
+	default:
+		return true
 	}
+
 	if m.len == 0 {
 		m.crc.Calculate(m.buffer[m.len+1 : m.len+pushedSize])
 	} else {
