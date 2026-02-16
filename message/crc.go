@@ -15,7 +15,7 @@ func newCRC() *CRC {
 		Init:       0xFFFF,
 		ReflectIn:  true,
 		ReflectOut: true,
-		FinalXor:   0xFFFF,
+		FinalXor:   0x0000,
 	}
 
 	return &CRC{crcCalculator: crc.NewTable(MCRF4XXparameters), MCRF4XXparameters: MCRF4XXparameters}
