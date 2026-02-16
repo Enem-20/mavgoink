@@ -150,8 +150,11 @@ func (m *Message) update(pushedSize int, pushedPosition int) bool {
 		m.len += 2
 		return true
 	}
-
-	m.crc.Calculate(m.buffer[m.len : m.len+pushedSize])
+	if m.len == 0 {
+		m.crc.Calculate(m.buffer[m.len+1 : m.len+pushedSize])
+	} else {
+		m.crc.Calculate(m.buffer[m.len : m.len+pushedSize])
+	}
 	m.len += pushedSize
 
 	return false
