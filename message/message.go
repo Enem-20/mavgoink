@@ -164,6 +164,7 @@ func (m *Message) updateHeader(values []byte, pushedSize int, pushedPosition int
 	case pushedSize == 0:
 		return false, errors.New("Pushed size is zero. No bytes to push.")
 	case pushedSize > MAVLINK_NUM_HEADER_BYTES:
+		m.crc.Calculate(values[1:MAVLINK_NUM_HEADER_BYTES])
 		copy(m.buffer[:], values[:MAVLINK_NUM_HEADER_BYTES])
 		return m.updatePayload(values[MAVLINK_NUM_HEADER_BYTES:pushedSize], pushedSize-MAVLINK_NUM_HEADER_BYTES, 0)
 	default:
