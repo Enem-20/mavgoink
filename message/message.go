@@ -132,7 +132,7 @@ func (m *Message) PushBytes(values []byte) (bool, error) {
 	if valuesLen == 0 {
 		return false, errors.New("No bytes to push.")
 	}
-	if (m.len >= MAVLINK_NUM_HEADER_BYTES) && (m.len+valuesLen > int(*m.Header.Len)+MAVLINK_NUM_HEADER_BYTES) {
+	if (m.len >= MAVLINK_NUM_HEADER_BYTES) && (m.len+valuesLen > (int(*m.Header.Len) + MAVLINK_NUM_HEADER_BYTES + MAVLINK_CRC_EXTRA_LEN)) {
 		return false, errors.New("Not enough space in the message to push the given bytes.")
 	}
 
@@ -152,7 +152,7 @@ func (m *Message) update(values []byte, pushedSize int, pushedPosition int) (boo
 		m.updateHeader(values, pushedSize, pushedPosition)
 	case (m.len >= MAVLINK_NUM_HEADER_BYTES) && !m.Payload.IsFull():
 		m.updatePayload(values, pushedSize, pushedPosition)
-	case m.len+pushedSize == MAVLINK_NUM_HEADER_BYTES+int(m.Header.len)+1:
+	case m.len+pushedSize == MAVLINK_NUM_HEADER_BYTES+int(m.Header.len)+MAVLINK_CRC_EXTRA_LEN:
 		m.updateCRCExtra(values[0])
 	}
 	return m.IsFull(), nil
