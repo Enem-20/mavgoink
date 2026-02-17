@@ -183,12 +183,7 @@ func (m *Message) updatePayload(values []byte, pushedSize int, pushedPosition in
 	case payloadSize == int(*m.Header.Len)+1:
 		crcExtra := byte(0)
 		crcExtra = values[pushedSize-1]
-		m.updateCRCExtra(crcExtra)
-		values = values[:pushedSize-1]
-		m.crc.Calculate(values[:pushedSize])
-		copy(m.buffer[m.len:], values[:pushedSize])
-		m.len += pushedSize
-		return true, nil
+		return m.updateCRCExtra(crcExtra)
 	default:
 		m.crc.Calculate(values[:pushedSize])
 		copy(m.buffer[m.len:], values[:pushedSize])
