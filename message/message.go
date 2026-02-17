@@ -179,8 +179,6 @@ func (m *Message) updatePayload(values []byte, pushedSize int, pushedPosition in
 	case pushedSize == 0:
 		return false, nil
 	case payloadSize > int(*m.Header.Len)+1:
-		return false, errors.New("Payload size exceeds maximum packet length")
-	case payloadSize > int(*m.Header.Len)+1:
 		return false, errors.New("Payload size exceeds maximum payload length")
 	case payloadSize == int(*m.Header.Len)+1:
 		crcExtra := byte(0)
