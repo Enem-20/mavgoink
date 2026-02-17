@@ -90,6 +90,7 @@ func (m *Message) Clear() {
 	m.Header.len = 0
 	m.Payload.Len = 0
 	m.len = 0
+	m.crc.Reset()
 }
 
 // returns true if the message is full and ready to be sent
@@ -159,15 +160,18 @@ func (m *Message) update(values []byte, pushedSize int, pushedPosition int) (boo
 }
 
 func (m *Message) updateHeader(values []byte, pushedSize int, pushedPosition int) (bool, error) {
-	if pushedSize == 0 {
-		return false, nil
-	}
-	if pushedSize > MAVLINK_NUM_HEADER_BYTES {
+	switch {
+	case pushedSize == 0:
+		return false, errors.New("Pushed size is zero. No bytes to push.")
+	case pushedSize > MAVLINK_NUM_HEADER_BYTES:
 		copy(m.buffer[:], values[:MAVLINK_NUM_HEADER_BYTES])
 		return m.updatePayload(values[MAVLINK_NUM_HEADER_BYTES:pushedSize], pushedSize-MAVLINK_NUM_HEADER_BYTES, 0)
+	default:
+		if m.len == 0 {
+			m.crc.Calculate(values[1:pushedSize])
+		}
+		copy(m.buffer[:], values[:pushedSize])
 	}
-
-	m.crc.Reset()
 
 	return false, nil
 }
@@ -177,7 +181,7 @@ func (m *Message) updatePayload(values []byte, pushedSize int, pushedPosition in
 	payloadSize := lastIndex - MAVLINK_NUM_HEADER_BYTES
 	switch {
 	case pushedSize == 0:
-		return false, nil
+		return false, errors.New("Pushed size is zero. No bytes to push.")
 	case payloadSize > int(*m.Header.Len)+1:
 		return false, errors.New("Payload size exceeds maximum payload length")
 	case payloadSize == int(*m.Header.Len)+1:
