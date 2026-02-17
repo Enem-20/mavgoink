@@ -54,6 +54,7 @@ func NewMessageFrom(stx, payloadCapacity, seq, sysid, compId byte, msgId uint32)
 	message.SetHeader(NewHeaderWith(ptr, stx, payloadCapacity, seq, sysid, compId, msgId))
 
 	message.Header.len = MAVLINK_NUM_HEADER_BYTES
+	message.len = MAVLINK_NUM_HEADER_BYTES
 
 	message.crc.Calculate(message.buffer[1:10])
 
