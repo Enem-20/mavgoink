@@ -15,6 +15,7 @@ const (
 	MAVLINK_SIGNATURE_BLOCK_LEN   = 13
 	MAVLINK_NUM_NON_PAYLOAD_BYTES = MAVLINK_NUM_HEADER_BYTES + MAVLINK_NUM_CHECKSUM_BYTES
 	MAVLINK_MAX_PACKET_LEN        = MAVLINK_MAX_PAYLOAD_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES + MAVLINK_SIGNATURE_BLOCK_LEN
+	MAVLINK_CRC_EXTRA_LEN         = 1
 )
 
 var PAYLOAD_SIZES_BY_MSG_ID = map[uint32]byte{
@@ -23,12 +24,12 @@ var PAYLOAD_SIZES_BY_MSG_ID = map[uint32]byte{
 }
 
 type Message struct {
-	buffer   [MAVLINK_MAX_PACKET_LEN]byte
-	Header   *Header  `json:"header"`
-	Payload  *Payload `json:"payload"`
-	crcExtra byte
-	crc      *CRC
-	len      int
+	buffer         [MAVLINK_MAX_PACKET_LEN]byte
+	Header         *Header  `json:"header"`
+	Payload        *Payload `json:"payload"`
+	crcExtraPushed bool
+	crc            *CRC
+	len            int
 }
 
 func NewMessage() *Message {
@@ -54,7 +55,7 @@ func NewMessageFrom(stx, payloadCapacity, seq, sysid, compId byte, msgId uint32)
 
 	message.Header.len = MAVLINK_NUM_HEADER_BYTES
 
-	message.update(10, 0)
+	message.crc.Calculate(message.buffer[1:10])
 
 	message.Payload = NewPayload((*[MAVLINK_MAX_PAYLOAD_LEN]byte)(unsafe.Pointer(&message.buffer[MAVLINK_NUM_HEADER_BYTES])), payloadCapacity)
 	return message
@@ -85,9 +86,9 @@ func (m *Message) SetCRC(crc uint16) {
 }
 
 func (m *Message) Clear() {
-	m.Header = nil
-	m.Payload = nil
-	m.crc = newCRC()
+	m.Header.len = 0
+	m.Payload.Len = 0
+	m.len = 0
 }
 
 // returns true if the message is full and ready to be sent
@@ -123,38 +124,92 @@ func (m *Message) PushBytes(values []byte) (bool, error) {
 	if m.len >= MAVLINK_MAX_PACKET_LEN {
 		return false, errors.New("Message is full. Cannot push more bytes.")
 	}
+	if values == nil {
+		return false, errors.New("Cannot push nil byte slice.")
+	}
 	valuesLen := len(values)
-	copy(m.buffer[m.len:], values)
-	return m.update(valuesLen, m.len), nil
+	if valuesLen == 0 {
+		return false, errors.New("No bytes to push.")
+	}
+	if (m.len >= MAVLINK_NUM_HEADER_BYTES) && (m.len+valuesLen > int(*m.Header.Len)+MAVLINK_NUM_HEADER_BYTES) {
+		return false, errors.New("Not enough space in the message to push the given bytes.")
+	}
+
+	return m.update(values, valuesLen, m.len)
 }
 
 func (m *Message) GetRawMessage() []byte {
 	return m.buffer[:m.len]
 }
 
-func (m *Message) update(pushedSize int, pushedPosition int) bool {
+func (m *Message) update(values []byte, pushedSize int, pushedPosition int) (bool, error) {
 	switch {
 	case m.len == 0:
-		m.crc.Reset()
+		m.crcExtraPushed = false
+		m.updateHeader(values, pushedSize, pushedPosition)
 	case m.len < MAVLINK_NUM_HEADER_BYTES:
-		m.Header.len += byte(pushedSize)
+		m.updateHeader(values, pushedSize, pushedPosition)
 	case (m.len >= MAVLINK_NUM_HEADER_BYTES) && !m.Payload.IsFull():
-		m.Payload.Len += byte(pushedSize)
-	case (int(m.len) >= (MAVLINK_NUM_HEADER_BYTES+int(m.Header.len)) && m.Payload.IsFull()):
-		m.crc.CalculateByte(m.buffer[m.len])
-		binary.LittleEndian.PutUint16(m.buffer[m.len:m.len+2], m.crc.GetCRC())
-		m.len += 2
-		return true
+		m.updatePayload(values, pushedSize, pushedPosition)
+	case m.len+pushedSize == MAVLINK_NUM_HEADER_BYTES+int(m.Header.len)+1:
+		m.updateCRCExtra(values[0])
+	}
+	return m.IsFull(), nil
+}
+
+func (m *Message) updateHeader(values []byte, pushedSize int, pushedPosition int) (bool, error) {
+	if pushedSize == 0 {
+		return false, nil
+	}
+	if pushedSize > MAVLINK_NUM_HEADER_BYTES {
+		copy(m.buffer[:], values[:MAVLINK_NUM_HEADER_BYTES])
+		return m.updatePayload(values[MAVLINK_NUM_HEADER_BYTES:pushedSize], pushedSize-MAVLINK_NUM_HEADER_BYTES, 0)
+	}
+
+	m.crc.Reset()
+
+	return false, nil
+}
+
+func (m *Message) updatePayload(values []byte, pushedSize int, pushedPosition int) (bool, error) {
+	lastIndex := m.len + pushedSize
+	payloadSize := lastIndex - MAVLINK_NUM_HEADER_BYTES
+	switch {
+	case pushedSize == 0:
+		return false, nil
+	case payloadSize > int(*m.Header.Len)+1:
+		return false, errors.New("Payload size exceeds maximum packet length")
+	case payloadSize > int(*m.Header.Len)+1:
+		return false, errors.New("Payload size exceeds maximum payload length")
+	case payloadSize == int(*m.Header.Len)+1:
+		crcExtra := byte(0)
+		crcExtra = values[pushedSize-1]
+		m.updateCRCExtra(crcExtra)
+		values = values[:pushedSize-1]
+		m.crc.Calculate(values[:pushedSize])
+		copy(m.buffer[m.len:], values[:pushedSize])
+		m.len += pushedSize
+		return true, nil
 	default:
-		return true
+		m.crc.Calculate(values[:pushedSize])
+		copy(m.buffer[m.len:], values[:pushedSize])
+		m.len += pushedSize
+		return false, nil
+	}
+}
+
+func (m *Message) updateCRCExtra(crcExtra byte) (bool, error) {
+	if crcExtra == 0 {
+		return false, nil
 	}
 
-	if m.len == 0 {
-		m.crc.Calculate(m.buffer[m.len+1 : m.len+pushedSize])
-	} else {
-		m.crc.Calculate(m.buffer[m.len : m.len+pushedSize])
-	}
-	m.len += pushedSize
+	m.crc.Calculate([]byte{crcExtra})
+	binary.LittleEndian.PutUint16(m.buffer[m.len:m.len+2], m.crc.GetCRC())
+	m.len += 2
+	m.crcExtraPushed = true
+	return m.IsFull(), nil
+}
 
-	return false
+func (m *Message) IsFull() bool {
+	return m.Header.IsFull() && m.Payload.IsFull() && m.crcExtraPushed
 }
