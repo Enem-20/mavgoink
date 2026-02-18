@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"strconv"
 	"unsafe"
 )
 
@@ -133,11 +134,47 @@ func (m *Message) PushBytes(values []byte) (bool, error) {
 	if valuesLen == 0 {
 		return false, errors.New("No bytes to push.")
 	}
+	if valuesLen > MAVLINK_MAX_PACKET_LEN {
+		return false, errors.New("Too many bytes to push. Max is " + strconv.Itoa(MAVLINK_MAX_PACKET_LEN))
+	}
 	if (m.len >= MAVLINK_NUM_HEADER_BYTES) && (m.len+valuesLen > (int(*m.Header.Len) + MAVLINK_NUM_HEADER_BYTES + MAVLINK_CRC_EXTRA_LEN)) {
 		return false, errors.New("Not enough space in the message to push the given bytes.")
 	}
 
 	return m.update(values, valuesLen, m.len)
+}
+
+func (m *Message) ParseFromBytes(values []byte) (bool, error) {
+	data := values[:len(values)-2]
+	crc := binary.LittleEndian.Uint16(values[len(values)-2:])
+	if m.len >= MAVLINK_MAX_PACKET_LEN {
+		return false, errors.New("Message is full. Cannot push more bytes.")
+	}
+	if values == nil {
+		return false, errors.New("Cannot push nil byte slice.")
+	}
+	dataLen := len(data)
+	if dataLen == 0 {
+		return false, errors.New("No bytes to push.")
+	}
+	if dataLen > MAVLINK_MAX_PACKET_LEN {
+		return false, errors.New("Too many bytes to push. Max is " + strconv.Itoa(MAVLINK_MAX_PACKET_LEN))
+	}
+	if (m.len >= MAVLINK_NUM_HEADER_BYTES) && (m.len+dataLen > (int(*m.Header.Len) + MAVLINK_NUM_HEADER_BYTES + MAVLINK_CRC_EXTRA_LEN)) {
+		return false, errors.New("Not enough space in the message to push the given bytes.")
+	}
+
+	res, err := m.update(data, dataLen, m.len)
+	if err != nil {
+		return false, err
+	}
+	if res {
+		if m.GetCRC() != crc {
+			return false, errors.New("CRC mismatch. Expected " + strconv.FormatUint(uint64(crc), 16) + " but calculated " + strconv.FormatUint(uint64(m.GetCRC()), 16))
+		}
+	}
+
+	return res, nil
 }
 
 func (m *Message) GetRawMessage() []byte {
@@ -153,7 +190,7 @@ func (m *Message) update(values []byte, pushedSize int, pushedPosition int) (boo
 		m.updateHeader(values, pushedSize, pushedPosition)
 	case (m.len >= MAVLINK_NUM_HEADER_BYTES) && !m.Payload.IsFull():
 		m.updatePayload(values, pushedSize, pushedPosition)
-	case m.len+pushedSize == MAVLINK_NUM_HEADER_BYTES+int(m.Header.len)+MAVLINK_CRC_EXTRA_LEN:
+	case m.len+pushedSize == MAVLINK_NUM_HEADER_BYTES+int(m.Payload.Len)+MAVLINK_CRC_EXTRA_LEN:
 		m.updateCRCExtra(values[0])
 	}
 	return m.IsFull(), nil
@@ -164,13 +201,23 @@ func (m *Message) updateHeader(values []byte, pushedSize int, pushedPosition int
 	case pushedSize == 0:
 		return false, errors.New("Pushed size is zero. No bytes to push.")
 	case pushedSize > MAVLINK_NUM_HEADER_BYTES:
-		m.crc.Calculate(values[1:MAVLINK_NUM_HEADER_BYTES])
+		if m.len == 0 {
+			m.crc.Calculate(values[1:MAVLINK_NUM_HEADER_BYTES])
+		} else {
+			m.crc.Calculate(values[m.len : m.len+pushedSize])
+		}
 		copy(m.buffer[:], values[:MAVLINK_NUM_HEADER_BYTES])
+		m.len += MAVLINK_NUM_HEADER_BYTES
+		m.Header.len = MAVLINK_NUM_HEADER_BYTES
 		return m.updatePayload(values[MAVLINK_NUM_HEADER_BYTES:pushedSize], pushedSize-MAVLINK_NUM_HEADER_BYTES, 0)
 	default:
 		if m.len == 0 {
 			m.crc.Calculate(values[1:pushedSize])
+		} else {
+			m.crc.Calculate(values[:pushedSize])
 		}
+		m.len += pushedSize
+		m.Header.len += byte(pushedSize)
 		copy(m.buffer[:], values[:pushedSize])
 	}
 
@@ -193,6 +240,7 @@ func (m *Message) updatePayload(values []byte, pushedSize int, pushedPosition in
 		m.crc.Calculate(values[:pushedSize])
 		copy(m.buffer[m.len:], values[:pushedSize])
 		m.len += pushedSize
+		m.Payload.Len += byte(pushedSize)
 		return false, nil
 	}
 }
